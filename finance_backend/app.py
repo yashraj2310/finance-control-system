@@ -6,7 +6,7 @@ from typing import Any
 from finance_backend.auth import authenticate_request, ensure_permissions
 from finance_backend.config import AppConfig
 from finance_backend.database import get_connection, initialize_database
-from finance_backend.errors import AppError, ValidationError
+from finance_backend.errors import AppError, MethodNotAllowedError, ValidationError
 from finance_backend.http import Request, Response
 from finance_backend.router import Router
 from finance_backend.services import DashboardService, RecordService, UserService
@@ -39,6 +39,12 @@ def create_app(config: AppConfig):
                 connection.commit()
             finally:
                 connection.close()
+        except MethodNotAllowedError as exc:
+            response = Response(
+                status_code=exc.status_code,
+                payload=exc.to_dict(),
+                headers={"Allow": ", ".join(exc.allowed_methods)},
+            )
         except AppError as exc:
             response = Response(status_code=exc.status_code, payload=exc.to_dict())
         except sqlite3.Error:

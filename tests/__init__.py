@@ -1,1 +1,1 @@
-# Test package marker.
+# Keeps default unittest discovery working from the project root.

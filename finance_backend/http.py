@@ -59,7 +59,12 @@ class Request:
             if not self.body:
                 raise ValidationError("A JSON request body is required.")
             try:
-                payload = json.loads(self.body.decode("utf-8"))
+                decoded_body = self.body.decode("utf-8")
+                payload = json.loads(decoded_body)
+            except UnicodeDecodeError as exc:
+                raise ValidationError(
+                    "Request body must be UTF-8 encoded JSON."
+                ) from exc
             except json.JSONDecodeError as exc:
                 raise ValidationError(
                     "Request body must contain valid JSON.",

@@ -23,6 +23,8 @@ class WSGITestClient:
         *,
         user_id: int | None = None,
         json_body: dict[str, Any] | None = None,
+        raw_body: bytes | None = None,
+        content_type: str | None = None,
         query: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, str], Any]:
         if query:
@@ -54,11 +56,20 @@ class WSGITestClient:
         if user_id is not None:
             environ["HTTP_X_USER_ID"] = str(user_id)
 
+        if json_body is not None and raw_body is not None:
+            raise ValueError("Pass either json_body or raw_body, not both.")
+
         if json_body is not None:
             body = json.dumps(json_body).encode("utf-8")
             environ["wsgi.input"] = io.BytesIO(body)
             environ["CONTENT_LENGTH"] = str(len(body))
             environ["CONTENT_TYPE"] = "application/json"
+        elif raw_body is not None:
+            body = raw_body
+            environ["wsgi.input"] = io.BytesIO(body)
+            environ["CONTENT_LENGTH"] = str(len(body))
+            if content_type is not None:
+                environ["CONTENT_TYPE"] = content_type
 
         status_holder: dict[str, Any] = {}
 
@@ -243,6 +254,70 @@ class FinanceBackendAPITestCase(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertEqual(payload["error"]["code"], "validation_error")
+
+    def test_invalid_json_body_returns_validation_error(self) -> None:
+        status, _, payload = self.client.request(
+            "POST",
+            "/records",
+            user_id=1,
+            raw_body=b"{bad json}",
+            content_type="application/json",
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"]["code"], "validation_error")
+        self.assertEqual(
+            payload["error"]["message"], "Request body must contain valid JSON."
+        )
+
+    def test_invalid_utf8_body_returns_validation_error(self) -> None:
+        status, _, payload = self.client.request(
+            "POST",
+            "/records",
+            user_id=1,
+            raw_body=b"\xff\xfe\xfd",
+            content_type="application/json",
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"]["code"], "validation_error")
+        self.assertEqual(
+            payload["error"]["message"], "Request body must be UTF-8 encoded JSON."
+        )
+
+    def test_wrong_http_method_returns_405_and_allow_header(self) -> None:
+        status, headers, payload = self.client.request("POST", "/health")
+
+        self.assertEqual(status, 405)
+        self.assertEqual(headers["Allow"], "GET")
+        self.assertEqual(payload["error"]["code"], "method_not_allowed")
+
+    def test_delete_record_returns_204_and_record_is_removed(self) -> None:
+        record = self._create_record(
+            {
+                "amount": 75,
+                "type": "expense",
+                "category": "Travel",
+                "date": "2026-03-06",
+                "notes": "Cab fare",
+            }
+        )
+
+        delete_status, _, delete_payload = self.client.request(
+            "DELETE",
+            f"/records/{record['id']}",
+            user_id=1,
+        )
+        get_status, _, get_payload = self.client.request(
+            "GET",
+            f"/records/{record['id']}",
+            user_id=2,
+        )
+
+        self.assertEqual(delete_status, 204)
+        self.assertIsNone(delete_payload)
+        self.assertEqual(get_status, 404)
+        self.assertEqual(get_payload["error"]["code"], "not_found")
 
     def _create_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         status, _, response_payload = self.client.request(

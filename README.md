@@ -40,6 +40,52 @@ Example:
 SEED_DEMO_RECORDS=false python -m finance_backend
 ```
 
+## Deploy To Render
+
+This repo now includes:
+
+- [requirements.txt](d:/zorvyn_assesment/requirements.txt) for Gunicorn
+- [wsgi.py](d:/zorvyn_assesment/finance_backend/wsgi.py) as the production WSGI entrypoint
+- [render.yaml](d:/zorvyn_assesment/render.yaml) as a Render Blueprint
+
+### Option 1: Fastest Path With `render.yaml`
+
+1. Push this project to GitHub.
+2. In Render, choose `New +` -> `Blueprint`.
+3. Select the GitHub repository.
+4. Render will detect [render.yaml](d:/zorvyn_assesment/render.yaml).
+5. Review and create the service.
+
+The blueprint config uses:
+
+- `gunicorn --bind 0.0.0.0:$PORT finance_backend.wsgi:application`
+- `/health` as the health check
+- a persistent disk mounted at `/var/data`
+- `FINANCE_DB_PATH=/var/data/finance.db`
+
+### Option 2: Manual Render Setup
+
+If you prefer to configure it manually in the dashboard:
+
+- Environment: `Python`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `gunicorn --bind 0.0.0.0:$PORT finance_backend.wsgi:application`
+- Health Check Path: `/health`
+
+Recommended environment variables:
+
+- `FINANCE_DB_PATH=/var/data/finance.db`
+- `SEED_DEMO_RECORDS=true`
+
+Recommended persistent disk:
+
+- Mount path: `/var/data`
+- Size: `1 GB`
+
+### Why A Persistent Disk Matters
+
+This project uses SQLite. On Render, SQLite data will be lost on restart or redeploy unless you attach a persistent disk. The included blueprint already configures that for you.
+
 ## Authentication Model
 
 Authentication is mocked through the `X-User-Id` request header. The server looks up the user in SQLite and then applies role permissions.
